@@ -1,0 +1,86 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: demo-simple-workflow-
+  namespace: argo
+spec:
+  entrypoint: steps
+  arguments:
+    parameters:
+      - name: ticker
+        value: MSFT
+      - name: start_date
+        value: "2015-01-01"
+      - name: end_date
+        value: "2016-01-01"
+  templates:
+    - name: marketdata
+      outputs:
+        artifacts:
+          - name: data
+            path: "/tmp/marketdata_{{inputs.parameters.ticker}}_{{inputs.parameters.start_date}}_{{inputs.parameters.end_date}}.csv"
+            archive:
+              none: { }
+      inputs:
+        parameters:
+          - name: ticker
+          - name: start_date
+          - name: end_date
+      container:
+        name: marketdata
+        image: marketdata
+        imagePullPolicy: Never
+        command: ["python3", "/app/main.py" ]
+        args:
+          - "{{inputs.parameters.ticker}}"
+          - "{{inputs.parameters.start_date}}"
+          - "{{inputs.parameters.end_date}}"
+    - name: strategy
+      inputs:
+        parameters:
+          - name: ticker
+          - name: start_date
+          - name: end_date
+        artifacts:
+          - name: data
+            path: "/tmp/marketdata_{{inputs.parameters.ticker}}_{{inputs.parameters.start_date}}_{{inputs.parameters.end_date}}.csv"
+      outputs:
+        artifacts:
+          - name: results
+            path: "/tmp/results_{{inputs.parameters.ticker}}_{{inputs.parameters.start_date}}_{{inputs.parameters.end_date}}.csv"
+            archive:
+              none: { }
+      container:
+        name: strategy
+        image: strategy
+        imagePullPolicy: Never
+        command: [ "python3", "/app/main.py" ]
+        args:
+          - "{{inputs.parameters.ticker}}"
+          - "{{inputs.parameters.start_date}}"
+          - "{{inputs.parameters.end_date}}"
+    - name: steps
+      steps:
+        - - name: download-marketdata
+            template: marketdata
+            arguments:
+              parameters:
+                - name: ticker
+                  value: "{{workflow.parameters.ticker}}"
+                - name: start_date
+                  value: "{{workflow.parameters.start_date}}"
+                - name: end_date
+                  value: "{{workflow.parameters.end_date}}"
+        - - name: strategy
+            template: strategy
+            arguments:
+              parameters:
+                - name: ticker
+                  value: "{{workflow.parameters.ticker}}"
+                - name: start_date
+                  value: "{{workflow.parameters.start_date}}"
+                - name: end_date
+                  value: "{{workflow.parameters.end_date}}"
+              artifacts:
+                - name: data
+                  from: "{{steps.download-marketdata.outputs.artifacts.data}}"

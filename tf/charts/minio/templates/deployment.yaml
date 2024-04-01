@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "minio.fullname" . }}
+  labels:
+    {{- include "minio.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "minio.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "minio.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - server
+            - --console-address
+            - :9001
+            - /data
+          env:
+            - name: MINIO_ROOT_USER
+              value: {{ .Values.minio.username }}
+            - name: MINIO_ROOT_PASSWORD
+              value: {{ .Values.minio.password }}
+          ports:
+            - name: {{ .Values.consoleService.name }}
+              containerPort: {{ .Values.consoleService.port }}
+              protocol: TCP
+            - name: {{ .Values.apiService.name }}
+              containerPort: {{ .Values.apiService.port }}
+              protocol: TCP
+          volumeMounts:
+            - name: minio-persistent-storage
+              mountPath: /data
+      volumes:
+        - name: minio-persistent-storage
+          persistentVolumeClaim:
+            claimName: {{ include "minio.fullname" . }}-pvc

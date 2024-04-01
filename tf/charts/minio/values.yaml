@@ -1,0 +1,24 @@
+replicaCount: 1
+
+minio:
+  username: minio
+  password: minio_password
+
+image:
+  repository: minio/minio
+  pullPolicy: IfNotPresent
+  tag: RELEASE.2024-03-15T01-07-19Z
+
+consoleService:
+  name: http-console
+  port: 9001
+  nodePort: 30091
+
+apiService:
+  name: http-api
+  port: 9000
+  nodePort: 30090
+
+service:
+  type: NodePort
+  port: 9001

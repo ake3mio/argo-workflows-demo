@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowEventBinding
+metadata:
+  name: parallel-workflow-supplied-values-event-binding
+  namespace: argo
+spec:
+  event:
+    selector: payload.start_date != "" && payload.end_date != "" && discriminator == "parallel-workflow-supplied-values"
+  submit:
+    workflowTemplateRef:
+      name: parallel-workflow-supplied-values
+    arguments:
+      parameters:
+        - name: start_date
+          valueFrom:
+            event: payload.start_date
+        - name: end_date
+          valueFrom:
+            event: payload.end_date

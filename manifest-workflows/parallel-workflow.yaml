@@ -1,0 +1,116 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: demo-parallel-workflow-
+  namespace: argo
+spec:
+  entrypoint: steps
+  arguments:
+    parameters:
+      - name: start_date
+        value: "2015-01-01"
+      - name: end_date
+        value: "2016-01-01"
+  templates:
+    - name: tickerconfig
+      inputs:
+        parameters:
+          - name: start_date
+          - name: end_date
+      container:
+        name: tickerconfig
+        image: tickerconfig
+        imagePullPolicy: Never
+        command: [ "python3", "/app/main.py" ]
+        args:
+          - "{{inputs.parameters.start_date}}"
+          - "{{inputs.parameters.end_date}}"
+    - name: marketdata
+      outputs:
+        artifacts:
+          - name: data
+            path: "/tmp/marketdata_{{inputs.parameters.ticker}}_{{inputs.parameters.start_date}}_{{inputs.parameters.end_date}}.csv"
+            # This archive argument below ensures that the output artifacts will
+            # not be compressed and makes it easier to read them back in the
+            # subsequent step.
+            archive: { none: { } }
+      #             This key below defines the artifact folder location. The exact same
+      #             location will be used during the fan-in stage.
+      #            s3:
+      #              key: marketdata-{{workflow.name}}/
+      inputs:
+        parameters:
+          - name: ticker
+          - name: start_date
+          - name: end_date
+      container:
+        name: download_market_data
+        image: yahooquotes
+        imagePullPolicy: Never
+        command: [ "python3", "/app/main.py" ]
+        args:
+          - "{{inputs.parameters.ticker}}"
+          - "{{inputs.parameters.start_date}}"
+          - "{{inputs.parameters.end_date}}"
+    - name: backtest
+      inputs:
+        parameters:
+          - name: ticker
+          - name: start_date
+          - name: end_date
+        artifacts:
+          - name: data
+            path: /tmp
+      outputs:
+        artifacts:
+          - name: results
+            path: "/tmp/results_{{inputs.parameters.ticker}}_{{inputs.parameters.start_date}}_{{inputs.parameters.end_date}}.csv"
+            archive:
+              none: { }
+      container:
+        name: backtester
+        image: strategy
+        imagePullPolicy: Never
+        command: [ "python3", "/app/main.py" ]
+        args:
+          - "{{inputs.parameters.ticker}}"
+          - "{{inputs.parameters.start_date}}"
+          - "{{inputs.parameters.end_date}}"
+    - name: steps
+      steps:
+        - - name: get-tickerconfig
+            template: tickerconfig
+            arguments:
+              parameters:
+                - name: start_date
+                  value: "{{workflow.parameters.start_date}}"
+                - name: end_date
+                  value: "{{workflow.parameters.end_date}}"
+        - - name: marketdata
+            template: marketdata
+            withParam: "{{steps.get-tickerconfig.outputs.result}}"
+            arguments:
+              parameters:
+                - name: ticker
+                  value: "{{item.ticker}}"
+                - name: start_date
+                  value: "{{item.start_date}}"
+                - name: end_date
+                  value: "{{item.end_date}}"
+        - - name: backtest
+            template: backtest
+            withParam: "{{steps.get-tickerconfig.outputs.result}}"
+            arguments:
+              parameters:
+                - name: ticker
+                  value: "{{item.ticker}}"
+                - name: start_date
+                  value: "{{item.start_date}}"
+                - name: end_date
+                  value: "{{item.end_date}}"
+              artifacts:
+                - name: data
+                  path: /tmp
+                  s3:
+                    bucket: data-bucket
+                    key: argo-runs/{{workflow.name}}/

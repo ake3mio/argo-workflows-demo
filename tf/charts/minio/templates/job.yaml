@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "minio.fullname" . }}-create-buckets
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+  labels:
+    {{- include "minio.labels" . | nindent 4 }}
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: wait-for-minio
+          image: busybox
+          args:
+            - /bin/sh
+            - -c
+            - |
+              until nc -z {{ include "minio.fullname" . }} {{ .Values.apiService.port }}; do
+                echo "Waiting for MinIO to be ready..."
+                sleep 5
+              done
+              echo "MinIO is ready!"
+      containers:
+        - name: mc
+          image: minio/mc:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              mc alias set k8sminio http://{{ include "minio.fullname" . }}:{{ .Values.apiService.port }} {{ .Values.minio.username }} {{ .Values.minio.password }}
+              mc mb k8sminio/data-bucket || true
+      restartPolicy: OnFailure
